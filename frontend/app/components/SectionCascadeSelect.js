@@ -17,6 +17,10 @@
       openLeft: false,
       openUp: false,
       uid: Math.random().toString(36).slice(2),
+      pointerHistory: [],
+      pendingGroupIdx: -1,
+      pendingSwitchTimer: null,
+      menuAimDelayMs: 320,
     };
   },
   computed: {
@@ -60,6 +64,8 @@
       this.open = false;
       this.openLeft = false;
       this.openUp = false;
+      this.clearPendingGroupSwitch();
+      this.pointerHistory = [];
     },
     updateMenuDirection() {
       if (!this.open) return;
@@ -101,6 +107,75 @@
       this.activeGroupIdx = idx;
       this.$nextTick(() => this.updateMenuDirection());
     },
+    clearPendingGroupSwitch() {
+      if (this.pendingSwitchTimer) clearTimeout(this.pendingSwitchTimer);
+      this.pendingSwitchTimer = null;
+      this.pendingGroupIdx = -1;
+    },
+    onMenuMouseMove(evt) {
+      if (!this.open) return;
+      const x = Number(evt?.clientX);
+      const y = Number(evt?.clientY);
+      if (!Number.isFinite(x) || !Number.isFinite(y)) return;
+      this.pointerHistory.push({ x, y, t: Date.now() });
+      if (this.pointerHistory.length > 6) this.pointerHistory.shift();
+    },
+    isPointInTriangle(p, a, b, c) {
+      const sign = (p1, p2, p3) => (p1.x - p3.x) * (p2.y - p3.y) - (p2.x - p3.x) * (p1.y - p3.y);
+      const d1 = sign(p, a, b);
+      const d2 = sign(p, b, c);
+      const d3 = sign(p, c, a);
+      const hasNeg = d1 < 0 || d2 < 0 || d3 < 0;
+      const hasPos = d1 > 0 || d2 > 0 || d3 > 0;
+      return !(hasNeg && hasPos);
+    },
+    isMovingTowardSubmenu(currEvt) {
+      if (this.activeGroupIdx < 0) return false;
+      const submenu = this.$refs.optionList;
+      if (!submenu) return false;
+      const rect = submenu.getBoundingClientRect();
+      const prev = this.pointerHistory[this.pointerHistory.length - 2] || this.pointerHistory[this.pointerHistory.length - 1];
+      if (!prev) return false;
+      const curr = {
+        x: Number(currEvt?.clientX),
+        y: Number(currEvt?.clientY),
+      };
+      if (!Number.isFinite(curr.x) || !Number.isFinite(curr.y)) return false;
+
+      const movingRight = curr.x >= prev.x + 2;
+      if (!movingRight) return false;
+
+      const targetA = { x: rect.left + 24, y: rect.top - 24 };
+      const targetB = { x: rect.left + 24, y: rect.bottom + 24 };
+      return this.isPointInTriangle(curr, prev, targetA, targetB);
+    },
+    scheduleGroupActivation(idx, evt) {
+      if (idx === this.activeGroupIdx) {
+        this.clearPendingGroupSwitch();
+        return;
+      }
+      this.clearPendingGroupSwitch();
+      this.pendingGroupIdx = idx;
+      this.pendingSwitchTimer = setTimeout(() => {
+        if (this.pendingGroupIdx === idx) this.setActiveGroup(idx);
+        this.clearPendingGroupSwitch();
+      }, this.menuAimDelayMs);
+      this.onMenuMouseMove(evt);
+    },
+    onGroupEnter(idx, evt) {
+      if (!this.open) return;
+      if (this.isMovingTowardSubmenu(evt)) {
+        this.scheduleGroupActivation(idx, evt);
+        return;
+      }
+      this.clearPendingGroupSwitch();
+      this.setActiveGroup(idx);
+      this.onMenuMouseMove(evt);
+    },
+    onMenuLeave() {
+      this.clearPendingGroupSwitch();
+      this.pointerHistory = [];
+    },
     onOtherOpen(evt) {
       const uid = evt?.detail?.uid;
       if (!uid || uid === this.uid) return;
@@ -116,6 +191,7 @@
     document.removeEventListener("click", this.onDocClick);
     window.removeEventListener("ui:dropdown-open", this.onOtherOpen);
     window.removeEventListener("resize", this.updateMenuDirection);
+    this.clearPendingGroupSwitch();
   },
   template: `
     <div class="cascadeSelect" :class="{ open, disabled, openLeft, openUp }" ref="root">
@@ -130,7 +206,7 @@
         <span class="cascadeLabel" :class="{ muted: isPlaceholder }" :title="displayLabel">{{ displayLabel }}</span>
         <span class="cascadeCaret">▾</span>
       </button>
-      <div v-if="open" class="cascadeMenu" @mouseleave="activeGroupIdx = activeGroupIdx">
+      <div v-if="open" class="cascadeMenu" @mousemove="onMenuMouseMove" @mouseleave="onMenuLeave">
         <div v-if="specialOptions && specialOptions.length" class="cascadeSpecial">
           <button
             v-for="opt in specialOptions"
@@ -149,13 +225,13 @@
               :key="g.label"
               class="cascadeGroupItem"
               :class="{ active: idx === activeGroupIdx }"
-              @mouseenter="setActiveGroup(idx)"
+              @mouseenter="onGroupEnter(idx, $event)"
             >
               <span>{{ g.label }}</span>
               <span class="cascadeArrow">›</span>
             </div>
           </div>
-          <div class="cascadeOptionList">
+          <div class="cascadeOptionList" ref="optionList">
             <div v-if="!activeGroup" class="cascadeEmpty">悬停选择分类</div>
             <div v-else-if="!activeGroup.options || !activeGroup.options.length" class="cascadeEmpty">暂无分类</div>
             <button

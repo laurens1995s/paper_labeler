@@ -57,6 +57,12 @@ export default {
       activeSubject: "",
       activeYear: "",
       activeSeason: "",
+      pointerHistory: [],
+      pendingSubjectKey: "",
+      pendingYearKey: "",
+      pendingSubjectTimer: null,
+      pendingYearTimer: null,
+      menuAimDelayMs: 320,
     };
   },
   computed: {
@@ -177,6 +183,8 @@ export default {
       this.open = false;
       this.openLeft = false;
       this.openUp = false;
+      this.clearPendingSwitches();
+      this.pointerHistory = [];
     },
     updateMenuDirection() {
       if (!this.open) return;
@@ -243,6 +251,111 @@ export default {
         this.close();
       }
     },
+    clearPendingSwitches() {
+      if (this.pendingSubjectTimer) clearTimeout(this.pendingSubjectTimer);
+      if (this.pendingYearTimer) clearTimeout(this.pendingYearTimer);
+      this.pendingSubjectTimer = null;
+      this.pendingYearTimer = null;
+      this.pendingSubjectKey = "";
+      this.pendingYearKey = "";
+    },
+    onMenuMouseMove(evt) {
+      if (!this.open) return;
+      const x = Number(evt?.clientX);
+      const y = Number(evt?.clientY);
+      if (!Number.isFinite(x) || !Number.isFinite(y)) return;
+      this.pointerHistory.push({ x, y, t: Date.now() });
+      if (this.pointerHistory.length > 6) this.pointerHistory.shift();
+    },
+    onMenuLeave() {
+      this.clearPendingSwitches();
+      this.pointerHistory = [];
+    },
+    isPointInTriangle(p, a, b, c) {
+      const sign = (p1, p2, p3) => (p1.x - p3.x) * (p2.y - p3.y) - (p2.x - p3.x) * (p1.y - p3.y);
+      const d1 = sign(p, a, b);
+      const d2 = sign(p, b, c);
+      const d3 = sign(p, c, a);
+      const hasNeg = d1 < 0 || d2 < 0 || d3 < 0;
+      const hasPos = d1 > 0 || d2 > 0 || d3 > 0;
+      return !(hasNeg && hasPos);
+    },
+    isMovingTowardColumn(evt, refName) {
+      const target = this.$refs[refName];
+      if (!target) return false;
+      const prev = this.pointerHistory[this.pointerHistory.length - 2] || this.pointerHistory[this.pointerHistory.length - 1];
+      if (!prev) return false;
+      const curr = {
+        x: Number(evt?.clientX),
+        y: Number(evt?.clientY),
+      };
+      if (!Number.isFinite(curr.x) || !Number.isFinite(curr.y)) return false;
+      if (curr.x < prev.x + 2) return false;
+      const rect = target.getBoundingClientRect();
+      const topLeft = { x: rect.left + 24, y: rect.top - 24 };
+      const bottomLeft = { x: rect.left + 24, y: rect.bottom + 24 };
+      return this.isPointInTriangle(curr, prev, topLeft, bottomLeft);
+    },
+    applySubject(subjectKey) {
+      this.activeSubject = subjectKey;
+      this.ensureActivePath();
+      this.$nextTick(() => this.updateMenuDirection());
+    },
+    applyYear(yearKey) {
+      this.activeYear = yearKey;
+      this.ensureActivePath();
+      this.$nextTick(() => this.updateMenuDirection());
+    },
+    scheduleSubjectActivation(subjectKey, evt) {
+      if (subjectKey === this.activeSubject) return;
+      if (this.pendingSubjectTimer) clearTimeout(this.pendingSubjectTimer);
+      this.pendingSubjectKey = subjectKey;
+      this.pendingSubjectTimer = setTimeout(() => {
+        if (this.pendingSubjectKey === subjectKey) this.applySubject(subjectKey);
+        this.pendingSubjectTimer = null;
+        this.pendingSubjectKey = "";
+      }, this.menuAimDelayMs);
+      this.onMenuMouseMove(evt);
+    },
+    scheduleYearActivation(yearKey, evt) {
+      if (yearKey === this.activeYear) return;
+      if (this.pendingYearTimer) clearTimeout(this.pendingYearTimer);
+      this.pendingYearKey = yearKey;
+      this.pendingYearTimer = setTimeout(() => {
+        if (this.pendingYearKey === yearKey) this.applyYear(yearKey);
+        this.pendingYearTimer = null;
+        this.pendingYearKey = "";
+      }, this.menuAimDelayMs);
+      this.onMenuMouseMove(evt);
+    },
+    onSubjectEnter(subjectKey, evt) {
+      if (!this.open) return;
+      if (this.isMovingTowardColumn(evt, "yearCol")) {
+        this.scheduleSubjectActivation(subjectKey, evt);
+        return;
+      }
+      if (this.pendingSubjectTimer) clearTimeout(this.pendingSubjectTimer);
+      this.pendingSubjectTimer = null;
+      this.pendingSubjectKey = "";
+      this.applySubject(subjectKey);
+      this.onMenuMouseMove(evt);
+    },
+    onYearEnter(yearKey, evt) {
+      if (!this.open) return;
+      if (this.isMovingTowardColumn(evt, "seasonCol")) {
+        this.scheduleYearActivation(yearKey, evt);
+        return;
+      }
+      if (this.pendingYearTimer) clearTimeout(this.pendingYearTimer);
+      this.pendingYearTimer = null;
+      this.pendingYearKey = "";
+      this.applyYear(yearKey);
+      this.onMenuMouseMove(evt);
+    },
+    onSeasonEnter(seasonKey, evt) {
+      this.activeSeason = seasonKey;
+      this.onMenuMouseMove(evt);
+    },
   },
   watch: {
     grouped: {
@@ -270,6 +383,7 @@ export default {
     document.removeEventListener("click", this.onDocClick);
     window.removeEventListener("ui:dropdown-open", this.onOtherOpen);
     window.removeEventListener("resize", this.updateMenuDirection);
+    this.clearPendingSwitches();
   },
   template: `
     <div class="cascadeSelect paperCascadeSelect" :class="{ open, disabled, openLeft, openUp }" ref="root">
@@ -285,7 +399,7 @@ export default {
         <span class="cascadeCaret">▾</span>
       </button>
 
-      <div v-if="open" class="cascadeMenu paperCascadeMenu">
+      <div v-if="open" class="cascadeMenu paperCascadeMenu" @mousemove="onMenuMouseMove" @mouseleave="onMenuLeave">
         <div class="simpleSelectMultiActions">
           <button type="button" class="simpleSelectOption" @click.stop="toggleSelectAll">
             {{ selectedKeys.size >= normalizedOptions.length ? '清空' : '全选' }}
@@ -299,33 +413,33 @@ export default {
               :key="s.key"
               class="cascadeGroupItem"
               :class="{ active: s.key === activeSubject }"
-              @mouseenter="activeSubject = s.key"
+              @mouseenter="onSubjectEnter(s.key, $event)"
             >
               <span>{{ s.label }}</span>
               <span class="muted">({{ s.count }})</span>
             </div>
           </div>
 
-          <div class="paperCascadeCol">
+          <div class="paperCascadeCol" ref="yearCol">
             <div
               v-for="y in yearList"
               :key="y.key"
               class="cascadeGroupItem"
               :class="{ active: y.key === activeYear }"
-              @mouseenter="activeYear = y.key"
+              @mouseenter="onYearEnter(y.key, $event)"
             >
               <span>{{ y.label }}</span>
               <span class="muted">({{ y.count }})</span>
             </div>
           </div>
 
-          <div class="paperCascadeCol">
+          <div class="paperCascadeCol" ref="seasonCol">
             <div
               v-for="z in seasonList"
               :key="z.key"
               class="cascadeGroupItem"
               :class="{ active: z.key === activeSeason }"
-              @mouseenter="activeSeason = z.key"
+              @mouseenter="onSeasonEnter(z.key, $event)"
             >
               <span>{{ z.label }}</span>
               <span class="muted">({{ z.count }})</span>
@@ -357,4 +471,3 @@ export default {
     </div>
   `,
 };
-
