@@ -1,0 +1,246 @@
+import { reactive } from "../vendor/vue.esm-browser.js";
+
+export const pendingOcrBoxesByPaperId = new Map();
+export const pendingOcrDraftByPaperId = new Map();
+export const pendingOcrWarningByPaperId = new Map();
+export const pendingOcrDraftSelectedIdxByPaperId = new Map();
+
+export const defaultState = () => ({
+  // global ui state
+  view: "filter",
+  statusText: "",
+  statusKind: "",
+  statsText: "",
+  cornerHint: "",
+
+  // paper list
+  papers: [],
+  allPaperFilenames: [],
+  showDonePapers: false,
+  currentPaperId: null,
+  currentQpPaperName: "",
+  currentMsPaperName: "",
+  currentPaperCacheToken: null,
+  currentMsCacheToken: null,
+
+  // pages
+  pages: [],
+  currentPageIndex: -1,
+
+  // question marking
+  newBoxes: [],
+  selectedNewBox: null,
+  dragNewBoxOp: null,
+  drawing: false,
+  startPt: null,
+  markUndoStack: [],
+  markRedoStack: [],
+  markSavedUndoStack: [],
+  markSavedRedoStack: [],
+  markPersistBusy: false,
+  pageQuestions: [],
+  suggestedNextNo: null,
+  globalSuggestedNextNo: null,
+  sectionDefs: [],
+  sectionNames: [],
+  sectionNamesFilter: [],
+  sectionNamesMark: [],
+  sectionGroups: [],
+  sectionOptionGroupsAll: [],
+  sectionOptionGroupsVisible: [],
+  sectionLabelMap: {},
+  sectionMultiSelect: false,
+  selectedSectionDefIds: new Set(),
+  sectionBatchGroupId: null,
+  selectedSectionsForNewQuestion: [],
+  qNotes: "",
+  editingQuestionId: null,
+  editingQuestionOriginal: null,
+  isLocalEdit: false,
+  answerReplaceMode: false,
+  answerReplaceQuestionId: null,
+
+  // answer marking
+  msPaperId: null,
+  msPages: [],
+  msCanvasByPage: new Map(),
+  answerQuestions: [],
+  answerQIndex: -1,
+  answerExistingBoxes: [],
+  answerNewBoxes: [],
+  answerDrawing: null,
+  selectedAnswerNew: null,
+  dragAnswerOp: null,
+  answerUndoStack: [],
+  answerRedoStack: [],
+
+  // alignment
+  answerAlignRef: null,
+  paperAlignRef: {},
+
+  // filtering
+  filterSection: "",
+  filterPaper: "",
+  filterPaperMulti: [],
+  filterYear: "",
+  filterYearMulti: [],
+  filterSeason: "",
+  filterSeasonMulti: [],
+  filterFavOnly: false,
+  filterExcludeMultiSection: false,
+  filterPage: 1,
+  filterPageSize: 10,
+  filterResults: [],
+  filterTotal: 0,
+  filterTotalPages: 1,
+  filterMultiSelect: false,
+  selectedQuestionIds: new Set(),
+
+  // OCR
+  ocrAutoEnabled: false,
+  ocrMinHeightPx: 70,
+  ocrYPaddingPx: 12,
+  ocrDraftQuestions: [],
+  selectedOcrDraftIdx: 0,
+  ocrWarning: "",
+
+  // answer admin
+  answerPaperList: [],
+
+  // section editor
+  newSectionName: "",
+  newSectionGroupName: "",
+  newSectionGroupId: null,
+
+  // settings
+  alignLeftEnabled: true,
+  alignPaperFirstEnabled: false,
+  answerAlignEnabled: true,
+  filterVirtualThreshold: 24,
+  filterVirtualOverscanPx: 900,
+  maintenanceBusy: false,
+  maintenanceDryRun: true,
+  maintenanceRemoveOrphanBoxes: false,
+  maintenanceFillMissingQuestionNo: false,
+  maintenanceRenumberQuestionNo: false,
+  maintenanceIntegrityReport: null,
+  maintenanceRepairReport: null,
+
+  // export wizard
+  exportWizardOpen: false,
+  exportWizardSummary: "",
+  exportIncludeQno: true,
+  exportIncludeSection: true,
+  exportIncludePaper: true,
+  exportIncludeOriginalQno: false,
+  exportIncludeNotes: false,
+  exportIncludeAnswers: false,
+  exportAnsPlacement: "end",
+  exportFileName: "",
+  exportRecommendedName: "",
+  exportFromRandomMode: false,
+  exportIncludeFilterSummary: false,
+  exportSummaryFieldSection: true,
+  exportSummaryFieldPaper: true,
+  exportSummaryFieldYear: true,
+  exportSummaryFieldSeason: true,
+  exportSummaryFieldFavorites: true,
+  exportSummaryFieldCount: true,
+  exportBusy: false,
+  exportDefaultSaveDir: "",
+  exportNameTemplate: "{mode}_{section}_{paper}_{year}_{season}_{count}",
+  exportNamePrefix: "",
+  exportNameSuffix: "",
+  exportNameCustom: "",
+  exportNameAutoTimestamp: true,
+  exportNameSectionStyle: "display",
+  exportCropWorkers: 0,
+  exportNameTemplateError: "",
+  exportJobId: "",
+  exportJobStatus: "",
+  exportJobPhase: "",
+  exportJobQueuePos: 0,
+  exportJobProgressDone: 0,
+  exportJobProgressTotal: 0,
+  exportJobProgressPercent: 0,
+  exportPollingTimer: null,
+
+  // random export
+  randomExportOpen: false,
+  randomExportFavOnly: false,
+  randomExportYearList: [],
+  randomExportSections: [],
+  randomExportGroups: [],
+  randomExportGroupOpen: {},
+  randomExportTotalCount: 0,
+  randomExportBatchValue: 1,
+
+  // CIE import
+  cieImportOpen: false,
+  cieSubjectInput: "",
+  cieSubjectName: "",
+  cieSubjectNameKind: "",
+  cieYearInput: "",
+  cieSeason: "Jun",
+  cieImportStatus: "",
+  ciePaperList: [],
+  ciePaperGroups: [],
+  ciePaperUnpaired: [],
+  ciePaperCountText: "",
+  cieSelectedIds: new Set(),
+  cieLoading: false,
+
+  // upload
+  uploadStatus: "",
+  uploading: false,
+
+  // ui inputs / helpers
+  markJumpPageInput: "",
+  filterJumpPageInput: "",
+  filterQuestionNoInput: "",
+  answerJumpMsPageInput: "",
+  qSectionSelectValue: "",
+  navStack: [],
+  cieSubjectComboList: [],
+  ciePaperListData: [],
+  randomExportConfig: null,
+  randomExportExcludeYears: [],
+  randomExportFavoriteOnly: false,
+  filterBatchSection: "",
+  pendingExportIds: [],
+  exportFilterIdsCacheKey: "",
+  exportFilterIdsCacheIds: [],
+  exportFilterIdsCacheAt: 0,
+  exportFilterCacheVersion: 0,
+  exportCacheStats: {
+    hit: 0,
+    miss: 0,
+    expired: 0,
+    write: 0,
+    lastHitAt: 0,
+    lastMissAt: 0,
+    lastWriteAt: 0,
+  },
+  exportCacheOverview: {
+    entryCount: 0,
+    newestAgeMs: null,
+    oldestAgeMs: null,
+    ttlMs: 6 * 60 * 60 * 1000,
+  },
+  _filterRunDebounceTimer: null,
+  _filterAbortController: null,
+  _filterRunSeq: 0,
+  _filterWarmupTimer: null,
+  _filterWarmupKeyInFlight: "",
+  filterReturnQid: null,
+  filterLoading: false,
+  filterPresets: [],
+  filterPresetNameInput: "",
+  filterPresetSelected: "",
+});
+
+export const state = reactive(defaultState());
+
+export const resetState = () => {
+  Object.assign(state, defaultState());
+};
